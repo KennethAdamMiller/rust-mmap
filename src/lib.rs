@@ -75,6 +75,8 @@ pub enum MapOption {
     MapWritable,
     /// The memory should be executable
     MapExecutable,
+    /// The memory may be shared with another process
+    MapShared,
     /// Create a map for a specific address range. Corresponds to `MAP_FIXED` on
     /// POSIX.
     MapAddr(*const u8),
@@ -85,7 +87,7 @@ pub enum MapOption {
     #[cfg(not(windows))]
     MapFd(c_int),
     /// When using `MapFd`, the start of the map is `usize` bytes from the start
-    /// of the file.
+    /// of the file. 
     MapOffset(usize),
     /// On POSIX, this can be used to specify the default flags passed to
     /// `mmap`. By default it uses `MAP_PRIVATE` and, if not using `MapFd`,
@@ -214,6 +216,7 @@ impl MemoryMap {
                 MapReadable => { prot |= libc::PROT_READ; },
                 MapWritable => { prot |= libc::PROT_WRITE; },
                 MapExecutable => { prot |= libc::PROT_EXEC; },
+                MapShared => { prot |= libc::MAP_SHARED; },
                 MapAddr(addr_) => {
                     flags |= libc::MAP_FIXED;
                     addr = addr_;
