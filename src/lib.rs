@@ -77,6 +77,8 @@ pub enum MapOption {
     MapExecutable,
     /// The memory may be shared with another process
     MapShared,
+    /// The memory is isolated for the process.
+    MapPrivate,
     /// Create a map for a specific address range. Corresponds to `MAP_FIXED` on
     /// POSIX.
     MapAddr(*const u8),
@@ -139,7 +141,10 @@ pub enum MapError {
     ErrCreateFileMappingW(i32),
     /// Unrecognized error from `MapViewOfFile`. The inner value is the return
     /// value of `GetLastError`.
-    ErrMapViewOfFile(i32)
+    ErrMapViewOfFile(i32),
+    /// Unknown I/O error
+    ErrIO
+      
 }
 
 impl fmt::Display for MapError {
@@ -151,7 +156,7 @@ impl fmt::Display for MapError {
                 "Unaligned address, invalid flags, negative length or \
                  unaligned offset"
             }
-            ErrNoMapSupport=> "File doesn't support mapping",
+            ErrNoMapSupport => "File doesn't support mapping",
             ErrNoMem => "Invalid address, or not enough available memory",
             ErrUnsupProt => "Protection mode unsupported",
             ErrUnsupOffset => "Offset in virtual memory mode is unsupported",
@@ -168,7 +173,8 @@ impl fmt::Display for MapError {
             },
             ErrMapViewOfFile(code) => {
                 return write!(out, "MapViewOfFile failure = {}", code)
-            }
+            },
+            ErrIO => "Unknown I/O error"
         };
         write!(out, "{}", str)
     }
@@ -204,8 +210,8 @@ impl MemoryMap {
             return Err(ErrZeroLength)
         }
         let mut addr: *const u8 = ptr::null();
-        let mut prot = 0;
-        let mut flags = libc::MAP_PRIVATE;
+        let mut prot : c_int = 0;
+        let mut flags : c_int = 0; 
         let mut fd = -1;
         let mut offset = 0;
         let mut custom_flags = false;
@@ -216,7 +222,8 @@ impl MemoryMap {
                 MapReadable => { prot |= libc::PROT_READ; },
                 MapWritable => { prot |= libc::PROT_WRITE; },
                 MapExecutable => { prot |= libc::PROT_EXEC; },
-                MapShared => { prot |= libc::MAP_SHARED; },
+                MapShared => { flags |= libc::MAP_SHARED; },
+                MapPrivate => { flags |= libc::MAP_PRIVATE; },
                 MapAddr(addr_) => {
                     flags |= libc::MAP_FIXED;
                     addr = addr_;
@@ -238,9 +245,10 @@ impl MemoryMap {
         if r == libc::MAP_FAILED {
             Err(match errno() {
                 libc::EACCES => ErrFdNotAvail,
-                libc::EBADF => ErrInvalidFd,
+                libc::EBADF  => ErrInvalidFd,
                 libc::EINVAL => ErrUnaligned,
                 libc::ENODEV => ErrNoMapSupport,
+                libc::EIO    => ErrIO,
                 libc::ENOMEM => ErrNoMem,
                 code => ErrUnknown(code as isize)
             })
